@@ -13,11 +13,11 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --two_stage \
     --mixed_selection \
     --look_forward_twice \
-    --resume \
     --upretrain \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \
+    --auto_resume \
     --lambda_one2many 1.0 \
     --dropout 0.0 \
     --norm_type pre_norm \
@@ -31,7 +31,7 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --proposal_feature_levels 4 \
     --proposal_in_stride 16 \
     --pretrained_backbone_path /home/bibahaduri/pt_models/swinv2_small_1k_500k_mim_pt.pth \
-    --epochs 100 \
+    --epochs 200 \
     --lr_drop 11 \
     --warmup 1000 \
     --lr 2e-4 \
