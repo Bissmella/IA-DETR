@@ -652,7 +652,8 @@ def batch_collator_eval(batch):
         tgt_dict['image_id'] = b['image_id']
         tgt_dict['labels'] = b['instances'].gt_classes
         tgt_dict['boxes'] = b['instances'].gt_boxes
-        tgt_dict['classes'] = b['orig_classes']
+        if 'orig_classes' in b:
+            tgt_dict['classes'] = b['orig_classes']
         tgt_dict['classes_info'] = torch.tensor(list(b['classes_info'].keys()))
         targets.append(tgt_dict)
         if 'query' in b:

@@ -50,7 +50,7 @@ def get_args_parser():
         nargs="+",
     )
     parser.add_argument("--lr_linear_proj_mult", default=0.1, type=float)
-    parser.add_argument("--batch_size", default=32, type=int)
+    parser.add_argument("--batch_size", default=16, type=int)
     parser.add_argument("--weight_decay", default=1e-4, type=float)
     parser.add_argument("--epochs", default=50, type=int)
     parser.add_argument("--lr_drop", default=40, type=int)
@@ -306,10 +306,10 @@ def main(args):
 
     model, criterion, postprocessors = build_model(args)
     model.to(device)
-
-    for key, param in model.named_parameters():
-        if key.startswith("backbone.0.net"):
-            param.requires_grad = False
+    if args.upretrain:
+        for key, param in model.named_parameters():
+            if key.startswith("backbone.0.net"):
+                param.requires_grad = False
 
 
     model_without_ddp = model
@@ -349,8 +349,8 @@ def main(args):
         data_loader_train = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"]) #,"pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"
         data_loader_val = build_eval_dataloader(args, ["pascalvoc_testup_Base",])
     else:
-        data_loader_train = build_train_dataloader(args, ["pascalvoc_train_Base",])
-        data_loader_val = build_eval_dataloader(args, ["pascalvoc_val_Base",])
+        data_loader_train = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"])
+        data_loader_val = build_eval_dataloader(args, ["pascalvoc_test_novel",])
     # data_loader_val = DataLoader(
     #     dataset_val,
     #     args.batch_size,
@@ -442,6 +442,7 @@ def main(args):
             print("Unexpected Keys: {}".format(unexpected_keys))
         if (
             not args.eval
+            and args.upretrain
             and "optimizer" in checkpoint
             and "lr_scheduler" in checkpoint
             and "epoch" in checkpoint
@@ -509,10 +510,10 @@ def main(args):
         #         msg += "{:.3f} ".format(ap)
         print(test_stats)
         return
-
-    for key, param in model.module.named_parameters(): ##model.module   TODO  just for cpu usage change it back
-        if key.startswith("backbone.0.net"):
-            param.requires_grad = False
+    if args.upretrain:
+        for key, param in model.module.named_parameters(): ##model.module   TODO  just for cpu usage change it back
+            if key.startswith("backbone.0.net"):
+                param.requires_grad = False
     print("Start training")
     start_time = time.time()
     #breakpoint()
