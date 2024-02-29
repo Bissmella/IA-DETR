@@ -563,11 +563,11 @@ def find_latest_checkpoint(path, ext="pth"):
     latest = -1
     latest_path = None
     for checkpoint in checkpoints:
-        # count = int(osp.basename(checkpoint).lstrip("checkpoint").split(".")[0])
-        # if count > latest:
-        #     latest = count
-        #     latest_path = checkpoint
-        latest_path = checkpoint
+        count = int(osp.basename(checkpoint).lstrip("checkpoint").split(".")[0])
+        if count > latest:
+            latest = count
+            latest_path = checkpoint
+        #latest_path = checkpoint
     return latest_path
 
 

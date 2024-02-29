@@ -540,7 +540,7 @@ def main(args):
         if args.output_dir:
             checkpoint_paths = []#output_dir / "checkpoint.pth"]
             # extra checkpoint before LR drop and every 5 epochs
-            checkpoint_paths.append(output_dir / f"checkpoint.pth")   ##{epoch:04}.pth")
+            checkpoint_paths.append(output_dir / f"checkpoint{epoch:04}.pth")   ##{epoch:04}.pth")
             for checkpoint_path in checkpoint_paths:
                 save_dict = {
                     "model": model_without_ddp.state_dict(),
