@@ -2,24 +2,23 @@
 
 set -x
 
-SUB_EXEC="_cr_freeze2"
+SUB_EXEC="_93"
 FILE_NAME=$(basename $0)
-EXP_DIR=/home/bibahaduri/exps/${FILE_NAME%.*}${SUB_EXEC}
+EXP_DIR=/home/bibahaduri/expscoco/${FILE_NAME%.*}${SUB_EXEC}
 PY_ARGS=${@:1}
 
-python -u main.py \
+CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --output_dir ${EXP_DIR} \
     --with_box_refine \
     --two_stage \
     --mixed_selection \
     --look_forward_twice \
-    --batch_size 1 \
-    --eval \
-    --resume /home/bibahaduri/exps/exec_finetune_cr_nofreeze/checkpoint0012.pth\
-    --dataset_file pascalvoc \
+    --batch_size 24 \
+    --upretrain \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \
+    --auto_resume \
     --lambda_one2many 1.0 \
     --dropout 0.0 \
     --norm_type pre_norm \
@@ -33,7 +32,7 @@ python -u main.py \
     --proposal_feature_levels 4 \
     --proposal_in_stride 16 \
     --pretrained_backbone_path /home/bibahaduri/pt_models/swinv2_small_1k_500k_mim_pt.pth \
-    --epochs 14 \
+    --epochs 30 \
     --lr_drop 11 \
     --warmup 1000 \
     --lr 2e-4 \

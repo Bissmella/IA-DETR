@@ -1,5 +1,7 @@
-
-
+# ------------------------------------------------------------------------
+# IA-DETR
+# Copyright (c) 2024 l2TI lab - USPN.
+# Licensed under The MIT License [see LICENSE for details]
 # --------------------------------------------------------
 # X-Decoder -- Generalized Decoding for Pixel, Image, and Language
 # Copyright (c) 2022 Microsoft
@@ -48,14 +50,7 @@ from .evaluation.instance_evaluation import InstanceSegEvaluator
 import sys
 sys.path.append("/home/bibahaduri/plain_detr/util")
 from util.misc import nested_tensor_from_tensor_list, nested_tensor_from_2tensor_lists
-#                                             ClassificationEvaluator, 
-#                                             SemSegEvaluator, 
-#                                             RetrievalEvaluator, 
-#                                             CaptioningEvaluator, 
-#                                             COCOPanopticEvaluator,
-#                                             GroundingEvaluator,
-#                                             InteractiveEvaluator,
-# )
+
 
 
 class JointLoader(torchdata.IterableDataset):
@@ -331,111 +326,19 @@ def build_detection_train_loader(
     )
 
 
-def get_config_from_name(cfg, dataset_name):
-    # adjust config according to dataset
-    if 'refcoco' in dataset_name:
-        cfg.update(cfg['REF'])
-        return cfg
-    elif 'cocomini' in dataset_name:
-        cfg.update(cfg['DAVIS'])
-        return cfg
-    elif 'ytvos' in dataset_name:
-        cfg.update(cfg['VOS'])
-        return cfg
-    elif 'ade600' in dataset_name:
-        cfg.update(cfg['DAVIS'])
-        return cfg
-    elif 'openimage600' in dataset_name:
-        cfg.update(cfg['DAVIS'])
-        return cfg
-    elif 'ade' in dataset_name:
-        if 'ADE20K' in cfg.keys():
-            cfg.update(cfg['ADE20K'])
-        return cfg
-    elif 'imagenet' in dataset_name:
-        if 'IMAGENET' in cfg.keys():
-            cfg.update(cfg['IMAGENET'])
-        return cfg
-    elif 'vlp' in dataset_name:
-        cfg.update(cfg['VLP'])
-        return cfg
-    elif 'coco' in dataset_name:
-        if 'COCO' in cfg.keys():
-            cfg.update(cfg['COCO'])
-        return cfg
-    elif 'voc' in dataset_name:
-        cfg.update(cfg['VOC'])
-        return cfg
-    elif 'context' in dataset_name:
-        cfg.update(cfg['CONTEXT'])
-        return cfg
-    elif 'sun' in dataset_name:
-        cfg.update(cfg['SUN'])
-        return cfg
-    elif 'scan' in dataset_name:
-        cfg.update(cfg['SCAN'])
-        return cfg
-    elif 'cityscape' in dataset_name:
-        cfg.update(cfg['CITY'])
-        return cfg
-    elif 'bdd' in dataset_name:
-        cfg.update(cfg['BDD'])
-        return cfg
-    elif 'tsv' in dataset_name:
-        cfg.update(cfg['TSV'])
-        return cfg
-    elif 'phrasecut' in dataset_name:
-        cfg.update(cfg['PHRASE'])
-        return cfg
-    elif 'object365' in dataset_name:
-        cfg.update(cfg['OBJECT365'])
-        return cfg
-    elif 'openimage' in dataset_name:
-        cfg.update(cfg['OPENIMAGE'])
-        return cfg
-    elif 'lvis' in dataset_name:
-        cfg.update(cfg['LVIS'])
-        return cfg
-    elif 'seginw' in dataset_name:
-        cfg.update(cfg['SEGINW'])
-        return cfg
-    elif 'sbd' in dataset_name:
-        cfg.update(cfg['SBD'])
-        return cfg
-    elif 'davis' in dataset_name:
-        cfg.update(cfg['DAVIS'])
-        return cfg
-    elif 'sam' in dataset_name:
-        cfg.update(cfg['SAM'])
-        return cfg
-    else:
-        assert False, "dataset not support."
 
 
 def build_eval_dataloader(cfg, dataset_names):
     dataloaders = []
+    mappers = []
     for dataset_name in dataset_names:##cfg['DATASETS']['TEST']:
-        cfg = cfg##get_config_from_name(cfg, dataset_name)
+        cfg = cfg
         # adjust mapper according to dataset
-        if dataset_name == 'imagenet_val':
-            mapper = ImageNetDatasetMapper(cfg, False)
-        elif dataset_name == 'bdd10k_val_sem_seg':
-            mapper = BDDSemDatasetMapper(cfg, False)
-        elif dataset_name in ["vlp_val", "vlp_captioning_val", "vlp_val2017", "vlp_captioning_val2017"]:
-            mapper = VLPreDatasetMapper(cfg, False, dataset_name)
-        elif dataset_name in ["scannet_21_val_seg", "scannet_38_val_seg", "scannet_41_val_seg"]:
-            mapper = ScanNetSegDatasetMapper(cfg, False)
-        elif dataset_name in ["scannet_21_panoptic_val", 'bdd10k_40_panoptic_val']:
-            mapper = ScanNetPanoDatasetMapper(cfg, False)
-        elif "pascalvoc_" in dataset_name:
+        if "pascalvoc_" in dataset_name or "coco_" in dataset_name or "dota_" in dataset_name:
             if cfg.upretrain == True:
                 mapper = PascalVOCPretrainDatasetMapperIX(is_train=False, dataset_name= dataset_name, min_size_test= 517, max_size_test= 518)
             else:
-                mapper = PascalVOCSegDatasetMapperIX(is_train=False, dataset_name= dataset_name, min_size_test= 517, max_size_test= 518)
-        elif 'sun' in dataset_name:
-            mapper = SunRGBDSegDatasetMapper(cfg, False)
-        elif 'refcoco' in dataset_name:
-            mapper = RefCOCODatasetMapper(cfg, False)
+                mapper = PascalVOCSegDatasetMapperIX(is_train=False, dataset_name= dataset_name, min_size_test= 517, max_size_test= 518, evalall = cfg.eval, coco_split=cfg.coco_split)
         else:
             mapper = None
         dataset = get_detection_dataset_dicts(
@@ -445,9 +348,9 @@ def build_eval_dataloader(cfg, dataset_names):
         )
         sampler =  InferenceSampler(len(dataset))
         batch_size = cfg.batch_size
-        
+        mappers.append(mapper)
         dataloaders += [build_detection_test_loader(dataset=dataset, mapper=mapper, sampler=sampler, batch_size=batch_size, num_workers=cfg.num_workers)]
-    return dataloaders
+    return dataloaders, mappers
 
 
 def build_train_dataloader(cfg, dataset_names):
@@ -455,46 +358,13 @@ def build_train_dataloader(cfg, dataset_names):
     
     loaders = {}
     datasets = []
+    mappers = []
     for dataset_name in dataset_names:
-        #cfg = get_config_from_name(cfg, dataset_name)
-        # if 'DATASET_MAPPER_NAME' in cfg['INPUT']:
-        #     mapper_name = cfg['INPUT']['DATASET_MAPPER_NAME']
-        # else:
-        mapper_name = "pascalvoc_train"
-        # Semantic segmentation dataset mapper
-        if mapper_name == "mask_former_semantic":
-            mapper = MaskFormerSemanticDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        # Panoptic segmentation dataset mapper
-        elif mapper_name == "mask_former_panoptic":
-            mapper = MaskFormerPanopticDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        # Instance segmentation dataset mapper
-        elif mapper_name == "mask_former_instance":
-            mapper = MaskFormerInstanceDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        # coco instance segmentation lsj new baseline
-        elif mapper_name == "coco_instance_lsj":
-            mapper = COCOInstanceNewBaselineDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        # coco panoptic segmentation lsj new baseline
-        elif mapper_name == "coco_panoptic_lsj":
-            mapper = COCOPanopticNewBaselineDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        elif mapper_name == "vlpretrain":
-            mapper = VLPreDatasetMapper(cfg, True, dataset_name)
-            loaders['vlp'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        elif mapper_name == "refcoco":
-            mapper = RefCOCODatasetMapper(cfg, True)
-            loaders['ref'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        elif mapper_name == "coco_interactive":
-            mapper = COCOPanopticInteractiveDatasetMapper(cfg, True)
-            loaders['coco'] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
-        elif mapper_name == "pascalvoc_train":
+        if "pascalvoc_" in dataset_name or "coco_" or "dota_" in dataset_name:
             if cfg.upretrain == True:
                 mapper = PascalVOCPretrainDatasetMapperIX(dataset_name= dataset_name, min_size_test= 517, max_size_test= 518)
             else:
-                mapper = PascalVOCSegDatasetMapperIX(dataset_name= dataset_name, min_size_test= 517, max_size_test= 518)
+                mapper = PascalVOCSegDatasetMapperIX(dataset_name= dataset_name, min_size_test= 517, max_size_test= 518, evalall = cfg.eval, coco_split=cfg.coco_split)
             dataset = None
             if dataset is None:
                 dataset = get_detection_dataset_dicts(
@@ -503,6 +373,7 @@ def build_train_dataloader(cfg, dataset_names):
                     proposal_files=None,
                 )
             datasets.append(dataset)
+            mappers.append(mapper)
 
     dataset = torchdata.ConcatDataset(datasets)
     sampler = None
@@ -512,14 +383,15 @@ def build_train_dataloader(cfg, dataset_names):
         logger.info("Using training sampler {}".format(sampler_name))
         sampler = TrainingSampler(len(dataset))
     loaders[dataset_name] = build_detection_train_loader(dataset= dataset, mapper=mapper, sampler=sampler, total_batch_size=cfg.batch_size, num_workers=cfg.num_workers)
+    
         # else:
         #     mapper = None
         #     loaders[dataset_name] = build_detection_train_loader(cfg, dataset_name=dataset_name, mapper=mapper)
     # breakpoint()
     if len(loaders) == 1 and not False:
-        return list(loaders.values())[0]
+        return list(loaders.values())[0], mappers
     else:
-        return JointLoader(loaders, key_dataset='pascalvoc')##cfg['LOADER'].get('KEY_DATASET', 'pascal'))
+        return JointLoader(loaders, key_dataset='pascalvoc'), mappers##cfg['LOADER'].get('KEY_DATASET', 'pascal'))
 
     
 def build_evaluator(cfg, dataset_name, device, output_folder=None):
@@ -548,77 +420,11 @@ def build_evaluator(cfg, dataset_name, device, output_folder=None):
     if evaluator_type == "coco":
         evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
     
-    if evaluator_type == "pascal":
+    if evaluator_type == "bbox":
         evaluator_list.append(BboxEvaluator(dataset_name, output_dir=output_folder, device = device))
         ##evaluator_list.append(PascalVOCDetectionEvaluator(dataset_name, output_dir=output_folder))
 
-    #cfg_model_decoder_test = cfg["MODEL"]["DECODER"]["TEST"]
-    # panoptic segmentation
-    # if evaluator_type in [
-    #     "coco_panoptic_seg",
-    #     "ade20k_panoptic_seg",
-    #     "cityscapes_panoptic_seg",
-    #     "mapillary_vistas_panoptic_seg",
-    #     "scannet_panoptic_seg",
-    #     "bdd_panoptic_pano"
-    # ]:
-        # if cfg_model_decoder_test["PANOPTIC_ON"]:
-        #     evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
-    # COCO
-    # if (evaluator_type == "coco_panoptic_seg" and cfg_model_decoder_test["INSTANCE_ON"]) or evaluator_type == "object365_od":
-    #     evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
-    # if (evaluator_type == "coco_panoptic_seg" and cfg_model_decoder_test["SEMANTIC_ON"]) or evaluator_type == "coco_sem_seg":
-    #     evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder))
-    # Mapillary Vistas
-    # if evaluator_type == "mapillary_vistas_panoptic_seg" and cfg_model_decoder_test["INSTANCE_ON"]:
-    #     evaluator_list.append(InstanceSegEvaluator(dataset_name, output_dir=output_folder))
-    # if evaluator_type == "mapillary_vistas_panoptic_seg" and cfg_model_decoder_test["SEMANTIC_ON"]:
-    #     evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder))
-    # Cityscapes
-    # if evaluator_type == "cityscapes_instance":
-    #     assert (
-    #         torch.cuda.device_count() > comm.get_rank()
-    #     ), "CityscapesEvaluator currently do not work with multiple machines."
-    #     return CityscapesInstanceEvaluator(dataset_name)
-    # if evaluator_type == "cityscapes_sem_seg":
-    #     assert (
-    #         torch.cuda.device_count() > comm.get_rank()
-    #     ), "CityscapesEvaluator currently do not work with multiple machines."
-    #     return CityscapesSemSegEvaluator(dataset_name)
-    # if evaluator_type == "cityscapes_panoptic_seg":
-    #     if cfg_model_decoder_test["SEMANTIC_ON"]:
-    #         assert (
-    #             torch.cuda.device_count() > comm.get_rank()
-    #         ), "CityscapesEvaluator currently do not work with multiple machines."
-    #         evaluator_list.append(CityscapesSemSegEvaluator(dataset_name))
-    #     if cfg_model_decoder_test["INSTANCE_ON"]:
-    #         assert (
-    #             torch.cuda.device_count() > comm.get_rank()
-    #         ), "CityscapesEvaluator currently do not work with multiple machines."
-    #         evaluator_list.append(CityscapesInstanceEvaluator(dataset_name))
-    # # ADE20K
-    # if evaluator_type == "ade20k_panoptic_seg" and cfg_model_decoder_test["INSTANCE_ON"]:
-    #     evaluator_list.append(InstanceSegEvaluator(dataset_name, output_dir=output_folder))
-    # SEGINW
-    # if evaluator_type == "seginw" and cfg_model_decoder_test["INSTANCE_ON"]:
-    #     evaluator_list.append(InstanceSegEvaluator(dataset_name, output_dir=output_folder))
-    # # LVIS
-    # if evaluator_type == "lvis":
-    #     return LVISEvaluator(dataset_name, output_dir=output_folder)
-    # # Classification
-    # if evaluator_type == "classification":
-    #     evaluator_list.append(ClassificationEvaluator(dataset_name, output_folder))
-    # # Retrieval
-    # if evaluator_type in ["retrieval"]:
-    #     evaluator_list.append(RetrievalEvaluator(dataset_name, output_folder, cfg['MODEL']['DECODER']['RETRIEVAL']['ENSEMBLE']))
-    # if evaluator_type == "captioning":
-    #     evaluator_list.append(CaptioningEvaluator(dataset_name, output_folder, MetadataCatalog.get(dataset_name).gt_json))
-    # if evaluator_type in ["grounding_refcoco", "grounding_phrasecut", "grounding_spatial", "grounding_entity"]:
-    #     evaluator_list.append(GroundingEvaluator(dataset_name))
-    # # Interactive
-    # if evaluator_type in ["interactive", "interactive_grounding"]:
-    #     evaluator_list.append(InteractiveEvaluator(dataset_name, output_dir=output_folder, max_clicks=cfg['STROKE_SAMPLER']['EVAL']['MAX_ITER'], iou_iter=cfg['STROKE_SAMPLER']['EVAL']['IOU_ITER']))
-
+    
     if len(evaluator_list) == 0:
         raise NotImplementedError(
             "no Evaluator for the dataset {} with the type {}".format(
@@ -654,10 +460,18 @@ def batch_collator_eval(batch):
         tgt_dict['boxes'] = b['instances'].gt_boxes
         if 'orig_classes' in b:
             tgt_dict['classes'] = b['orig_classes']
-        tgt_dict['classes_info'] = torch.tensor(list(b['classes_info'].keys()))
+        if 'orig_boxes' in b:
+            tgt_dict['orig_boxes'] = b['orig_boxes']
+        #tgt_dict['classes_info'] = torch.tensor(list(b['classes_info'].keys()))
+        if 'cls2idx' in b:
+            tgt_dict['cls2idx'] = b['cls2idx']
         targets.append(tgt_dict)
         if 'query' in b:
-            queries.append(b['query'])
+            if isinstance(b['query'], list):
+                queries.extend(b['query'])
+            else:
+                queries.append(b['query'])
+        
     
     if len(queries) > 0:
         samples, queries = nested_tensor_from_2tensor_lists(samples, queries)
@@ -691,7 +505,9 @@ def batch_collator_train(batch):
         tgt_dict['boxes'] = b['instances'].gt_boxes##box_ops.box_xyxy_to_cxcywh(b['instances'].gt_boxes) / ratio
         if 'orig_classes' in b:
             tgt_dict['classes'] = b['orig_classes']
-        tgt_dict['classes_info'] = torch.tensor(list(b['classes_info'].keys()))
+        if 'orig_boxes' in b:
+            tgt_dict['orig_boxes'] = b['orig_boxes']
+        #tgt_dict['classes_info'] = torch.tensor(list(b['classes_info'].keys()))
         targets.append(tgt_dict)
         if 'query' in b:
             queries.append(b['query'])

@@ -2,21 +2,20 @@
 
 set -x
 
-SUB_EXEC="_cr_freeze2"
+SUB_EXEC="_cr15_1"
 FILE_NAME=$(basename $0)
-EXP_DIR=/home/bibahaduri/exps/${FILE_NAME%.*}${SUB_EXEC}
+EXP_DIR=/home/bibahaduri/expscoco/${FILE_NAME%.*}${SUB_EXEC}
 PY_ARGS=${@:1}
 
-python -u main.py \
+CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --output_dir ${EXP_DIR} \
     --with_box_refine \
     --two_stage \
     --mixed_selection \
     --look_forward_twice \
-    --batch_size 1 \
-    --eval \
-    --resume /home/bibahaduri/exps/exec_finetune_cr_nofreeze/checkpoint0012.pth\
-    --dataset_file pascalvoc \
+    --batch_size 16 \
+    --dataset_file coco \
+    --auto_resume \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \

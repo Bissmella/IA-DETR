@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# IA-DETR
+# Copyright (c) 2024 l2TI lab - USPN.
+# Licensed under The MIT License [see LICENSE for details]
+# ------------------------------------------------------------------------
 # Plain-DETR
 # Copyright (c) 2023 Xi'an Jiaotong University & Microsoft Research Asia.
 # Licensed under The MIT License [see LICENSE for details]
@@ -108,6 +112,9 @@ class GlobalDecoderLayer(nn.Module):
         src_pos_embed,
         src_padding_mask=None,
         self_attn_mask=None,
+        prmpt = None,
+        prmpt_mask = None,
+        prmpt_pos_embed= None,
     ):
         # self attention
         tgt2 = self.norm2(tgt)
@@ -120,13 +127,15 @@ class GlobalDecoderLayer(nn.Module):
         )[0].transpose(0, 1)
         tgt = tgt + self.dropout2(tgt2)
 
+        if prmpt_mask is not None:
+            combined_mask = src_padding_mask & prmpt_mask
         # global cross attention
         tgt2 = self.norm1(tgt)
         tgt2 = self.cross_attn(
             self.with_pos_embed(tgt2, query_pos),
-            self.with_pos_embed(src, src_pos_embed),
-            src,
-            src_padding_mask,
+            self.with_pos_embed(prmpt, prmpt_pos_embed),##self.with_pos_embed(src, src_pos_embed),
+            self.with_pos_embed(src, src_pos_embed),##src,
+            combined_mask,##src_padding_mask,
         )
         tgt = tgt + self.dropout1(tgt2)
 
@@ -182,9 +191,12 @@ class GlobalDecoderLayer(nn.Module):
         src_pos_embed,
         src_padding_mask=None,
         self_attn_mask=None,
+        prmpt = None,
+        prmpt_mask = None,
+        prmpt_pos_embed= None,
     ):
         if self.norm_type == "pre_norm":
-            return self.forward_pre(tgt, query_pos, src, src_pos_embed, src_padding_mask, self_attn_mask)
+            return self.forward_pre(tgt, query_pos, src, src_pos_embed, src_padding_mask, self_attn_mask, prmpt, prmpt_mask, prmpt_pos_embed)
         if self.norm_type == "post_norm":
             return self.forward_post(tgt, query_pos, src, src_pos_embed, src_padding_mask, self_attn_mask)
 
@@ -243,6 +255,9 @@ class GlobalDecoder(nn.Module):
         src_padding_mask=None,
         self_attn_mask=None,
         max_shape=None,
+        prmpt = None,
+        prmpt_masks = None,
+        prmpt_pos_embed= None,
     ):
         output = tgt
 
@@ -267,6 +282,9 @@ class GlobalDecoder(nn.Module):
                     src_pos_embed,
                     src_padding_mask,
                     self_attn_mask,
+                    prmpt,
+                    prmpt_masks,
+                    prmpt_pos_embed,
                 )
 
             if self.final_layer_norm is not None:

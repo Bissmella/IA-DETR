@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# IA-DETR
+# Copyright (c) 2024 l2TI lab - USPN.
+# Licensed under The MIT License [see LICENSE for details]
+# ------------------------------------------------------------------------
 # Plain-DETR
 # Copyright (c) 2023 Xi'an Jiaotong University & Microsoft Research Asia.
 # Licensed under The MIT License [see LICENSE for details]
@@ -29,7 +33,7 @@ import util.misc as utils
 import datasets.samplers as samplers
 from datasets import build_dataset, get_coco_api_from_dataset
 from data.build import build_evaluator, build_eval_dataloader, build_train_dataloader
-from engine import evaluate, train_one_epoch
+from engine import evaluate, evaluateall, train_one_epoch
 from models import build_model
 from torch import distributed as dist
 import wandb
@@ -50,7 +54,7 @@ def get_args_parser():
         nargs="+",
     )
     parser.add_argument("--lr_linear_proj_mult", default=0.1, type=float)
-    parser.add_argument("--batch_size", default=16, type=int)
+    parser.add_argument("--batch_size", default=1, type=int)
     parser.add_argument("--weight_decay", default=1e-4, type=float)
     parser.add_argument("--epochs", default=50, type=int)
     parser.add_argument("--lr_drop", default=40, type=int)
@@ -244,6 +248,7 @@ def get_args_parser():
 
     # dataset parameters
     parser.add_argument("--dataset_file", default="pascal")
+    parser.add_argument("--coco_split", default=1, help="coco split for training or evaluation")
     parser.add_argument("--coco_path", default="./data/coco", type=str)
     parser.add_argument("--coco_panoptic_path", type=str)
     parser.add_argument("--remove_difficult", action="store_true")
@@ -259,7 +264,7 @@ def get_args_parser():
     parser.add_argument(
         "--start_epoch", default=0, type=int, metavar="N", help="start epoch"
     )
-    parser.add_argument("--num_workers", default=8, type=int)
+    parser.add_argument("--num_workers", default=1, type=int)
     parser.add_argument(
         "--cache_mode",
         default=False,
@@ -303,6 +308,14 @@ def main(args):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+    output_dir = Path(args.output_dir)
+    if args.auto_resume:
+        if os.path.exists(output_dir / f'rng_state_{utils.get_rank()}.pth'):
+                    rng_state_dict = torch.load(output_dir / f'rng_state_{utils.get_rank()}.pth', map_location='cpu')
+                    torch.set_rng_state(rng_state_dict['cpu_rng_state'])
+                    torch.cuda.set_rng_state(rng_state_dict['gpu_rng_state'])
+                    np.random.set_state(rng_state_dict['numpy_rng_state'])
+                    random.setstate(rng_state_dict['py_rng_state'])
 
     model, criterion, postprocessors = build_model(args)
     model.to(device)
@@ -320,49 +333,28 @@ def main(args):
     if args.use_fp16:
         scaler = torch.cuda.amp.GradScaler()
 
-    # dataset_train = build_dataset(image_set="train", args=args)
-    # dataset_val = build_dataset(image_set="val", args=args)
 
-    # if args.distributed:
-    #     if args.cache_mode:
-    #         sampler_train = samplers.NodeDistributedSampler(dataset_train)
-    #         sampler_val = samplers.NodeDistributedSampler(dataset_val, shuffle=False)
-    #     else:
-    #         sampler_train = samplers.DistributedSampler(dataset_train)
-    #         sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
-    # else:
-    #     sampler_train = torch.utils.data.RandomSampler(dataset_train)
-    #     sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-
-    # batch_sampler_train = torch.utils.data.BatchSampler(
-    #     sampler_train, args.batch_size, drop_last=True
-    # )
-
-    # data_loader_train = DataLoader(
-    #     dataset_train,
-    #     batch_sampler=batch_sampler_train,
-    #     collate_fn=utils.collate_fn,
-    #     num_workers=args.num_workers,
-    #     pin_memory=True,
-    # )
     if args.upretrain:
-        data_loader_train = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"]) #,"pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"
-        data_loader_val = build_eval_dataloader(args, ["pascalvoc_testup_Base",])
+        if args.dataset_file == "pascalvoc":
+            data_loader_train, mappers = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"])
+            data_loader_val, _ = build_eval_dataloader(args, ["pascalvoc_testup_Base",])
+        elif args.dataset_file == "coco":
+            data_loader_train, mappers = build_train_dataloader(args, [f"coco_train_{args.coco_split}_Base",]) 
+            data_loader_val, _ = build_eval_dataloader(args, [f"coco_val_{args.coco_split}_Novel",])
     else:
-        data_loader_train = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base"])
-        data_loader_val = build_eval_dataloader(args, ["pascalvoc_test_novel",])
-    # data_loader_val = DataLoader(
-    #     dataset_val,
-    #     args.batch_size,
-    #     sampler=sampler_val,
-    #     drop_last=False,
-    #     collate_fn=utils.collate_fn,
-    #     num_workers=args.num_workers,
-    #     pin_memory=True,
-    # )
-    #**
-    file_path = '/home/bibahaduri/dataset/cropped_pascalvoc/image_details.csv'
-    prmpt_df = pd.read_csv(file_path)
+        if args.dataset_file =="pascalvoc":
+            data_loader_train, mappers = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base",])
+            data_loader_val, mapper = build_eval_dataloader(args, ["pascalvoc_test_novel",])
+        elif args.dataset_file == "coco":
+            data_loader_train, mappers = build_train_dataloader(args, [f"coco_train_{args.coco_split}_Base",]) 
+            data_loader_val, mapper = build_eval_dataloader(args, [f"coco_val_{args.coco_split}_novel",])
+        elif args.dataset_file == "dota":
+            data_loader_train, mappers = build_train_dataloader(args, ["dota_train_Base",]) 
+            data_loader_val, mapper = build_eval_dataloader(args, ["dota_val_Novel",])
+            
+
+
+    prmpt_df = None##pd.read_csv(file_path)
 
     # lr_backbone_names = ["backbone.0", "backbone.neck", "input_proj", "transformer.encoder"]
     #breakpoint()
@@ -388,7 +380,7 @@ def main(args):
     # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_drop)
     #breakpoint()
     print("dataset_len=",len(data_loader_train.dataset.dataset)) ##
-    epoch_iter = math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size)
+    epoch_iter = len(data_loader_train.dataset.dataset) // args.batch_size
     if args.warmup:
         lambda0 = lambda cur_iter: cur_iter / args.warmup if cur_iter < args.warmup else (0.1 if cur_iter > args.lr_drop * epoch_iter else 1)
     else:
@@ -418,7 +410,6 @@ def main(args):
             name=args.wandb_name,
         )
 
-    output_dir = Path(args.output_dir)
     if args.auto_resume:
         resume_from = utils.find_latest_checkpoint(output_dir)
         if resume_from is not None:
@@ -433,16 +424,18 @@ def main(args):
             )
         else:
             checkpoint = torch.load(args.resume, map_location="cpu")
+
         missing_keys, unexpected_keys = model_without_ddp.load_state_dict(
             checkpoint["model"], strict=False
         )
         if len(missing_keys) > 0:
             print("Missing Keys: {}".format(missing_keys))
+
         if len(unexpected_keys) > 0:
             print("Unexpected Keys: {}".format(unexpected_keys))
         if (
             not args.eval
-            and args.upretrain
+            and args.auto_resume
             and "optimizer" in checkpoint
             and "lr_scheduler" in checkpoint
             and "epoch" in checkpoint
@@ -467,6 +460,7 @@ def main(args):
 
             if args.use_fp16 and "scaler" in checkpoint:
                 scaler.load_state_dict(checkpoint["scaler"])
+            
         # check the resumed model
         if not args.eval:
             test_stats = evaluate(
@@ -484,7 +478,8 @@ def main(args):
             )
 
     if args.eval:
-        test_stats = evaluate(
+        assert args.batch_size == 1, "evaluation is done only with batch size of 1"
+        test_stats = evaluateall(
             model,
             criterion,
             postprocessors,
@@ -495,20 +490,10 @@ def main(args):
             step=args.start_epoch * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),
             use_wandb=args.use_wandb,
             reparam=args.reparam,
-            df = prmpt_df,
+            mapper= mapper,
+            dataset_file= args.dataset_file,
         )
-        # if args.output_dir:
-        #     utils.save_on_master(
-        #         coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth"
-        #     )
-        # if utils.is_main_process():
-        #     areaRngLbl = ['', '50', '75', 's', 'm', 'l']
-        #     msg = "copypaste: "
-        #     for label in areaRngLbl:
-        #         msg += f"AP{label} "
-        #     for ap in coco_evaluator.coco_eval["bbox"].stats[:len(areaRngLbl)]:
-        #         msg += "{:.3f} ".format(ap)
-        print(test_stats)
+
         return
     if args.upretrain:
         for key, param in model.module.named_parameters(): ##model.module   TODO  just for cpu usage change it back
@@ -520,6 +505,11 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         # if args.distributed:
         #     sampler_train.set_epoch(epoch)
+        if not args.upretrain:
+            if epoch >= 2:
+                for key, param in model.module.named_parameters(): ##model.module   TODO  just for cpu usage change it back
+                    if key.startswith("backbone.0.net"):
+                        param.requires_grad = False
         train_stats = train_one_epoch(
             model,
             criterion,
@@ -537,10 +527,13 @@ def main(args):
             epoch_iter = epoch_iter,
             upretrain = args.upretrain,
         )
+        if not args.upretrain:
+            for mapper in mappers:
+                mapper.update_epoch(epoch +1)
         if args.output_dir:
             checkpoint_paths = []#output_dir / "checkpoint.pth"]
             # extra checkpoint before LR drop and every 5 epochs
-            checkpoint_paths.append(output_dir / f"checkpoint{epoch:04}.pth")   ##{epoch:04}.pth")
+            checkpoint_paths.append(output_dir / f"checkpoint{epoch:04}.pth")#{epoch:04}.pth")   ##{epoch:04}.pth"){epoch:04}
             for checkpoint_path in checkpoint_paths:
                 save_dict = {
                     "model": model_without_ddp.state_dict(),
@@ -555,28 +548,42 @@ def main(args):
                     save_dict,
                     checkpoint_path,
                 )
-
-        test_stats = evaluate(
-            model,
-            criterion,
-            postprocessors,
-            data_loader_val,
-            base_ds,
-            device,
-            args.output_dir,
-            step=(epoch + 1) * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),
-            use_wandb=args.use_wandb,
-            reparam=args.reparam,
-            df = prmpt_df,
-        )
-        
+                rng_state_dict = {
+                    'cpu_rng_state': torch.get_rng_state(),
+                    'gpu_rng_state': torch.cuda.get_rng_state(),
+                    'numpy_rng_state': np.random.get_state(),
+                    'py_rng_state': random.getstate()
+                }
+                torch.save(rng_state_dict, output_dir / f'rng_state_{utils.get_rank()}.pth')
+        if not args.upretrain:
+            test_stats = evaluate(
+                model,
+                criterion,
+                postprocessors,
+                data_loader_val,
+                base_ds,
+                device,
+                args.output_dir,
+                step=(epoch + 1) * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),
+                use_wandb=args.use_wandb,
+                reparam=args.reparam,
+                df = prmpt_df,
+            )
+        else:
+            test_stats = {}
         log_stats = {
             **{f"train_{k}": v for k, v in train_stats.items()},
             **{f"test_{k}": v for k, v in test_stats.items()},
             "epoch": epoch,
             "n_parameters": n_parameters,
         }
-
+        rng_state_dict = {
+                    'cpu_rng_state': torch.get_rng_state(),
+                    'gpu_rng_state': torch.cuda.get_rng_state(),
+                    'numpy_rng_state': np.random.get_state(),
+                    'py_rng_state': random.getstate()
+                }
+        torch.save(rng_state_dict, output_dir / f'rng_state_{utils.get_rank()}.pth')
         if args.output_dir and utils.is_main_process():
             with (output_dir / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")

@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# IA-DETR
+# Copyright (c) 2024 l2TI lab - USPN.
+# Licensed under The MIT License [see LICENSE for details]
+# ------------------------------------------------------------------------
 # Plain-DETR
 # Copyright (c) 2023 Xi'an Jiaotong University & Microsoft Research Asia.
 # Licensed under The MIT License [see LICENSE for details]
@@ -18,7 +22,7 @@ from util.misc import inverse_sigmoid, _get_clones, _get_activation_fn
 from util.box_ops import box_xyxy_to_cxcywh, delta2bbox
 
 
-class GlobalCrossAttention(nn.Module):
+class GlobalIndirectAttention(nn.Module):
     def __init__(
         self,
         dim,
@@ -66,6 +70,7 @@ class GlobalCrossAttention(nn.Module):
         v_input_flatten,
         input_spatial_shapes,
         input_padding_mask=None,
+        value_padding_mask= None,
     ):
         assert input_spatial_shapes.size(0) == 1, 'This is designed for single-scale decoder.'
         h, w = input_spatial_shapes[0]
@@ -116,7 +121,9 @@ class GlobalCrossAttention(nn.Module):
         attn = self.softmax(attn)
         
         attn = self.attn_drop(attn)
-        
+        # value_padding_mask = value_padding_mask.unsqueeze(-1)
+        # value_padding_mask = value_padding_mask.repeat(1, 1, v.size(-1))
+        # v.masked_fill(value_padding_mask.unsqueeze(1), 0)
         x = attn @ v
         
 
@@ -145,7 +152,7 @@ class GlobalDecoderLayer(nn.Module):
         self.norm_type = norm_type
         self.n_heads = n_heads
         # global cross attention
-        self.cross_attn = GlobalCrossAttention(d_model, n_heads, rpe_hidden_dim=rpe_hidden_dim,
+        self.cross_attn = GlobalIndirectAttention(d_model, n_heads, rpe_hidden_dim=rpe_hidden_dim,
                                                rpe_type=rpe_type, feature_stride=feature_stride,
                                                reparam=reparam)
         self.dropout1 = nn.Dropout(dropout)
@@ -188,11 +195,11 @@ class GlobalDecoderLayer(nn.Module):
         # self attention
         tgt2 = self.norm2(tgt)
         q = k = self.with_pos_embed(tgt2, query_pos)
-        
+
         tgt2 = self.self_attn(
             q.transpose(0, 1),
-            k.transpose(0, 1),
-            tgt2.transpose(0, 1),
+            k.transpose(0, 1) , ##+ sprompt,
+            tgt2.transpose(0, 1), ## + sprompt,
             attn_mask=self_attn_mask,
         )[0].transpose(0, 1)
         tgt = tgt + self.dropout2(tgt2)
@@ -225,6 +232,7 @@ class GlobalDecoderLayer(nn.Module):
                 self.with_pos_embed(src, src_pos_embed),
                 src_spatial_shapes,
                 combined_mask,
+                src_padding_mask,
             )
         else:
             tgt2 = self.cross_attn(
@@ -422,7 +430,7 @@ class GlobalDecoder(nn.Module):
                     self_attn_mask,
                     prmpt,
                     prmpt_maks,
-                    prmpt_pos_embed
+                    prmpt_pos_embed,
                 )
 
             if self.final_layer_norm is not None:
@@ -468,7 +476,7 @@ class GlobalDecoder(nn.Module):
         return output_after_norm, reference_points
 
 
-def build_global_rpe_decomp_decoder(args):
+def build_global_rpe_indirect_decoder(args):
     decoder_layer = GlobalDecoderLayer(
         d_model=args.hidden_dim,
         d_ffn=args.dim_feedforward,

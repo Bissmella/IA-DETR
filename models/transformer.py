@@ -1,4 +1,8 @@
 # ------------------------------------------------------------------------
+# IA-DETR
+# Copyright (c) 2024 l2TI lab - USPN.
+# Licensed under The MIT License [see LICENSE for details]
+# ------------------------------------------------------------------------
 # Deformable DETR
 # Copyright (c) 2020 SenseTime. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 [see LICENSE for details]
@@ -20,7 +24,7 @@ from util.box_ops import delta2bbox, box_xyxy_to_cxcywh
 from models.utils import LayerNorm2D
 
 from models.global_ape_decoder import build_global_ape_decoder
-from models.global_rpe_decomp_decoder import build_global_rpe_decomp_decoder
+from plain_detr.models.global_rpe_indirect_decoder import build_global_rpe_indirect_decoder
 
 from models.encoder import build_global_encoder
 
@@ -54,7 +58,7 @@ class Transformer(nn.Module):
         if decoder_type == 'global_ape':
             self.decoder = build_global_ape_decoder(args)
         elif decoder_type == 'global_rpe_decomp':
-            self.decoder = build_global_rpe_decomp_decoder(args)
+            self.decoder = build_global_rpe_indirect_decoder(args)
         else:
             raise NotImplementedError
 
@@ -71,7 +75,7 @@ class Transformer(nn.Module):
             self.pos_trans = nn.Linear(d_model * 2, d_model * 2)
             self.pos_trans_norm = nn.LayerNorm(d_model * 2)
         else:
-            self.reference_points = nn.Linear(d_model, 2)
+            self.reference_points = nn.Linear(d_model, 4)#2)
 
         self.mixed_selection = mixed_selection
         self.proposal_feature_levels = proposal_feature_levels
@@ -305,8 +309,13 @@ class Transformer(nn.Module):
         img_attn_mask = img_attn_mask.view(prmpt_mask_flatten.shape[0] * self.nhead, mask_flatten.shape[1], -1)
         #memory = self.encoder(src_flatten, lvl_pos_embed_flatten,  prmpt_flatten, prmpt_mask_flatten, prmpt_pos_embed_flatten, img_mask = img_attn_mask)
 
-        # prepare input for decoder
-        memory = src_flatten
+        # encoder is an auxilliary function 
+        
+        if self.encoder != None:
+            memory = self.encoder(src_flatten, lvl_pos_embed_flatten,  prmpt_flatten, prmpt_mask_flatten, prmpt_pos_embed_flatten, img_mask = img_attn_mask)
+        else:
+            memory = src_flatten
+
         bs, _, c = memory.shape
         if self.two_stage:
             (reference_points, max_shape, enc_outputs_class,
@@ -328,9 +337,35 @@ class Transformer(nn.Module):
             tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
             reference_points = self.reference_points(query_embed).sigmoid()
             init_reference_out = reference_points
+            max_shape = None
 
-        # decoder
-        hs, inter_references = self.decoder(
+        # # decoder
+        # breakpoint()
+        # sprompt = prmpt_flatten.masked_fill(prmpt_mask_flatten.unsqueeze(-1), float(0))
+        # sprompt = torch.topk(prmpt_flatten, k=300, dim=1)[1]
+        # #sprmpt = R.gather(1,topk_positions.unsqueeze(2).expand(batch_size,K,d))
+        # if self.training:
+        #     sprompt = sprompt.repeat(1, 6, 1)
+        # tgt = tgt + sprompt
+        if self.encoder == None:
+            hs, inter_references = self.decoder(
+                tgt,
+                reference_points,
+                memory,
+                lvl_pos_embed_flatten,
+                spatial_shapes,
+                level_start_index,
+                valid_ratios,
+                query_embed,
+                mask_flatten,
+                self_attn_mask,
+                max_shape,
+                prmpt_flatten,
+                prmpt_mask_flatten,
+                prmpt_pos_embed_flatten,
+            )
+        else:
+            hs, inter_references = self.decoder(
             tgt,
             reference_points,
             memory,
@@ -342,9 +377,10 @@ class Transformer(nn.Module):
             mask_flatten,
             self_attn_mask,
             max_shape,
-            prmpt_flatten,
-            prmpt_mask_flatten,
-            prmpt_pos_embed_flatten,
+            None,
+            None,
+            None,
+            #None, ##src_flatten,
         )
 
         inter_references_out = inter_references

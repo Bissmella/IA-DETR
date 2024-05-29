@@ -66,9 +66,7 @@ class BboxEvaluator(DatasetEvaluator):
         
 
     def reset(self):
-        self._predictions = defaultdict(
-            list
-        )  # class name -> list of prediction strings
+        self.stats = []  # class name -> list of prediction strings
 
     def process(self, inputs, outputs, classname= None):
 
@@ -195,7 +193,7 @@ class BboxEvaluator(DatasetEvaluator):
                     clss_pred = torch.tensor([1]).float()
                     pi = (pred[:, 5] == clss_pred[0] ).nonzero(as_tuple=False).view(-1)   #pred[:, 5] == cls   changed to one
 
-                    #pred[pi, 5] = float(classname[si])
+                    pred[pi, 5] = float(clss)
                     # Search for detections
                     ## if pi.shape[0]:
                     # Prediction to target ious
@@ -233,8 +231,8 @@ class BboxEvaluator(DatasetEvaluator):
 
 
         pf = '%20s' + '%12i'  + '%12.4g' * 4  # print format
-        print(pf % ('all', nt.sum(), mp, mr, map50, map))
-        nc =20
+        #print(pf % ('all', nt.sum(), mp, mr, map50, map))
+        nc =91
         maps = np.zeros(nc) + map
         for i, c in enumerate(ap_class):
             try:
@@ -243,8 +241,8 @@ class BboxEvaluator(DatasetEvaluator):
                 breakpoint()
         #breakpoint()
         stats = {'mp': mp, 'mr':mr, 'map50':map50, 'map': map}
-
-        return stats, maps
+        maps_d = {index: value for index, value in enumerate(maps)}
+        return stats, maps_d
 
 
 

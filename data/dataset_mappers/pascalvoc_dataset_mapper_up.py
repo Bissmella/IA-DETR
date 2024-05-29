@@ -69,12 +69,12 @@ def make_self_det_transforms(training):
     ])
 
     # The image of ImageNet is relatively small.
-    scales = [320, 336, 352, 368, 400, 416, 432, 448, 464, 480]
+    scales = [400, 480, 512, 544, 576, 608, 640]###[320, 336, 352, 368, 400, 416, 432, 448, 464, 480]
 
     if training == True:
         return T.Compose([
             # T.RandomHorizontalFlip(), HorizontalFlip may cause the pretext too difficult, so we remove it
-            T.RandomResize(scales, max_size=512),
+            T.RandomResize(scales, max_size=642),
             normalize,
         ])
 
@@ -89,7 +89,7 @@ def get_query_transforms(training):
     if training == True:
         # SimCLR style augmentation
         return transforms.Compose([
-            transforms.Resize((512, 512)),
+            transforms.Resize(510, max_size=512),##(512, 512)),
             transforms.RandomApply([
                 transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
             ], p=0.8),
@@ -102,7 +102,7 @@ def get_query_transforms(training):
         ])
     if training == False:
         return transforms.Compose([
-            transforms.Resize((512, 512)),
+            transforms.Resize(510, max_size=512),##(512, 512)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])

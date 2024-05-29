@@ -30,7 +30,7 @@ class HungarianMatcher(nn.Module):
     """
 
     def __init__(
-        self, cost_class: float = 1, cost_bbox: float = 1, cost_giou: float = 1, cost_bbox_type: str = "l1",
+        self, cost_class: float = 1, cost_bbox: float = 1, cost_giou: float = 1, cost_bbox_type: str = "l1", upretrain=False
     ):
         """Creates the matcher
 
@@ -45,11 +45,12 @@ class HungarianMatcher(nn.Module):
         self.cost_bbox = cost_bbox
         self.cost_giou = cost_giou
         self.cost_bbox_type = cost_bbox_type
+        self.upretrain= upretrain
         assert (
             cost_class != 0 or cost_bbox != 0 or cost_giou != 0
         ), "all costs cant be 0"
 
-    def forward(self, outputs, targets):
+    def forward(self, outputs, targets, encoder = False):
         """ Performs the matching
 
         Params:
@@ -95,12 +96,15 @@ class HungarianMatcher(nn.Module):
             #**
                 
             # Also concat the target labels and boxes
-            tgt_ids = torch.cat([v["labels"] for v in targets])
+            tgt_ids = torch.cat([v["labels"] for v in targets]).int()
             tgt_bbox = torch.cat([v["boxes"] for v in targets])
-            
+
             #**
-            tgt_ids.fill_(1)
+            if not self.upretrain:
+                if encoder == False:
+                    tgt_ids.fill_(1)
             #**
+
 
             # Compute the classification cost.
             alpha = 0.25
@@ -111,7 +115,10 @@ class HungarianMatcher(nn.Module):
             pos_cost_class = (
                 alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
             )
-            cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
+            try:
+                cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
+            except:
+                breakpoint()
 
             #** TODO 
             # if no_classes != None:
@@ -163,4 +170,5 @@ def build_matcher(args):
         cost_bbox=args.set_cost_bbox,
         cost_giou=args.set_cost_giou,
         cost_bbox_type='l1' if (not args.reparam) else 'reparam',
+        upretrain=args.upretrain
     )

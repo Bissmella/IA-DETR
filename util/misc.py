@@ -557,7 +557,7 @@ def find_latest_checkpoint(path, ext="pth"):
         return osp.join(path, f"checkpoint.{ext}")
 
     checkpoints = glob.glob(osp.join(path, f"*.{ext}"))
-    checkpoints = [ckpt for ckpt in checkpoints if osp.basename(ckpt) != 'eval.pth']
+    checkpoints = [ckpt for ckpt in checkpoints if osp.basename(ckpt) != 'eval.pth' and 'rng_state' not in osp.basename(ckpt)]
     if len(checkpoints) == 0:
         return None
     latest = -1

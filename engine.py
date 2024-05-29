@@ -28,8 +28,13 @@ from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
 from datasets.data_prefetcher import data_prefetcher
 from torch import distributed as dist
+from data import PASCAL_VOC_BASE_CLASSES, PASCAL_VOC_NOVEL_CLASSES
+from datasets import build_dataset, get_coco_api_from_dataset
+import gc
+import logging
+from pycocotools.coco import COCO
 
-
+logger = logging.getLogger(__name__)
 def train_hybrid(outputs, targets, k_one2many, criterion, lambda_one2many,upretrain):
     # one-to-one-loss
     loss_dict = criterion(outputs, targets)
@@ -63,7 +68,7 @@ def train_hybrid(outputs, targets, k_one2many, criterion, lambda_one2many,upretr
 #**
 import random
 from PIL import Image
-from util.misc import nested_tensor_from_tensor_list
+from util.misc import NestedTensor, nested_tensor_from_tensor_list
 from util.constants import PASCAL_CLASSES
 from torchvision import transforms
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
@@ -266,7 +271,7 @@ def evaluate(
     for samples, prmpts, targets in metric_logger.log_every(data_loader[0], 10, header):
         samples = samples.to(device)
 
-        targets = [{k: v.to(device) if k != "image_id" else v for k, v in t.items()} for t in targets]
+        targets = [{k: v.to(device) if k not in ["image_id", "cls2idx"] else v for k, v in t.items()} for t in targets]
         prmpts = prmpts.to(device)# , targets = get_prompts(df, targets, device)
         outputs = model(samples, prmpts)
         loss_dict = criterion(outputs, targets)
@@ -296,10 +301,10 @@ def evaluate(
             results = postprocessors["segm"](
                 results, outputs, orig_target_sizes, target_sizes
             )
-        res = {
-            target["image_id"].item(): output
-            for target, output in zip(targets, results)
-        }
+        # res = {
+        #     target["image_id"].item(): output
+        #     for target, output in zip(targets, results)
+        # }
         if bbox_evaluator is not None:
             bbox_evaluator.process(targets, results)
 
@@ -323,39 +328,140 @@ def evaluate(
     if panoptic_evaluator is not None:
         panoptic_evaluator.synchronize_between_processes()
     results, maps = bbox_evaluator.evaluate()
-    # accumulate predictions from all images
-    # if bbox_evaluator is not None:
-    #     coco_evaluator.accumulate()
-    # #     coco_evaluator.summarize()
-    # panoptic_res = None
-    # if panoptic_evaluator is not None:
-    #     panoptic_res = panoptic_evaluator.summarize()
-    # stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    # if coco_evaluator is not None:
-    #     if "bbox" in postprocessors.keys():
-    #         stats["coco_eval_bbox"] = coco_evaluator.coco_eval["bbox"].stats.tolist()
-    #     if "segm" in postprocessors.keys():
-    #         stats["coco_eval_masks"] = coco_evaluator.coco_eval["segm"].stats.tolist()
-    # if panoptic_res is not None:
-    #     stats["PQ_all"] = panoptic_res["All"]
-    #     stats["PQ_th"] = panoptic_res["Things"]
-    #     stats["PQ_st"] = panoptic_res["Stuff"]
-    # if use_wandb and utils.get_rank() == 0:
-    #     log_data = {
-    #         "bbox/AP": stats["coco_eval_bbox"][0],
-    #         "bbox/AP50": stats["coco_eval_bbox"][1],
-    #         "bbox/AP75": stats["coco_eval_bbox"][2],
-    #         "bbox/APs": stats["coco_eval_bbox"][3],
-    #         "bbox/APm": stats["coco_eval_bbox"][4],
-    #         "bbox/APl": stats["coco_eval_bbox"][5],
-    #     }
-    #     for k, v in stats.items():
-    #         if k not in ["coco_eval_bbox", "coco_eval_masks"]:
-    #             log_data["val/" + k] = v
-    #     wandb.log(data=log_data, step=step)
 
     # recover the model parameters for next training epoch
     model.module.num_queries = save_num_queries
     model.module.transformer.two_stage_num_proposals = save_two_stage_num_proposals
     test_metrics = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-    return {**results, **test_metrics} ##, coco_evaluator
+    return {**test_metrics, **results, **maps} 
+
+
+def evaluateall(    model,
+    criterion,
+    postprocessors,
+    data_loader,
+    base_ds,
+    device,
+    output_dir,
+    step,
+    use_wandb=False,
+    reparam=False,
+    mapper = None,
+    dataset_file = None,
+):
+    # (hack) disable the one-to-many branch queries
+    # save them frist
+    save_num_queries = model.module.num_queries
+    save_two_stage_num_proposals = model.module.transformer.two_stage_num_proposals
+    model.module.num_queries = model.module.num_queries_one2one
+    model.module.transformer.two_stage_num_proposals = model.module.num_queries
+
+    model.eval()
+    criterion.eval()
+
+    unseen_classes = mapper.base_ind
+
+    #creating id to category maps
+    if dataset_file == 'coco':
+        coco = COCO('data/coco/annotations/instances_val2017.json')
+        categories = coco.loadCats(coco.getCatIds())
+        id_to_category_map = {category['id']: category['name'] for category in categories}
+    elif dataset_file == 'pascalvoc':
+        id_to_category_map = {category[id]: category for id, category in enumerate(PASCAL_CLASSES)}  
+    else:
+        assert False, "Not implemented!"
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    # metric_logger.add_meter(
+    #     "class_error", utils.SmoothedValue(window_size=1, fmt="{value:.2f}")
+    # )
+    header = "Test:"
+
+    iou_types = tuple(k for k in ("segm", "bbox") if k in postprocessors.keys())
+
+    bbox_evaluator = build_evaluator(None, "coco_train_1_Base", device, output_dir)
+
+    panoptic_evaluator = None
+    if "panoptic" in postprocessors.keys():
+        panoptic_evaluator = PanopticEvaluator(
+            data_loader.dataset.ann_file,
+            data_loader.dataset.ann_folder,
+            output_dir=os.path.join(output_dir, "panoptic_eval"),
+        )
+    overall_results = {}
+    for samples, prmpts, targets in metric_logger.log_every(data_loader[0], 10, header):
+        samples = samples.to(device)
+
+        targets = [{k: v.to(device) if k not in ["image_id", "cls2idx"] else v for k, v in t.items()} for t in targets]
+        targets = targets[0]
+        prmpts = prmpts.to(device)# , targets = get_prompts(df, targets, device)
+
+        samples.tensors = torch.cat((samples.tensors, prmpts.tensors))
+        samples.mask = torch.cat((samples.mask, prmpts.mask))
+        srcs, masks, pos, query_embeds, self_attn_mask, prmpts, prmpt_masks, prmpt_pos = model.module.encode(samples)
+
+        
+        indices = torch.tensor([0,1,2,3,4]) #indices for selecting the queries related to a class   #HACK hard coded tobe enhanced
+        
+        for cls in targets['cls2idx'].keys():
+            n_indices = indices + (targets['cls2idx'][cls] * 5)  ##indices for selecting the queries related to current class   #HACK hard coded tobe enhanced
+            n_indices = n_indices.to(device)
+
+            queries = prmpts[n_indices]   ##[i] for i in n_indices]
+            queries_masks = prmpt_masks[n_indices]   ##[i] for i in n_indices]
+            queries_pos = prmpt_pos[n_indices]   ##[i] for i in n_indices]
+            srcs_n = [srcs.repeat(queries.shape[0], 1, 1, 1)]
+            masks_n = [masks.repeat(queries.shape[0], 1, 1)]
+            pos_n = [pos.repeat(queries.shape[0], 1, 1, 1)]
+            outputs = model.module.decode(srcs_n, masks_n, pos_n, query_embeds, self_attn_mask, [queries], [queries_masks], [queries_pos])
+            n_targets = copy.deepcopy(targets)
+            condition = n_targets['labels'] == cls
+            n_targets['labels'] = n_targets['labels'][condition]
+            n_targets['labels'].fill_(1)
+            n_targets['boxes'] = n_targets['boxes'][condition]
+            n_targets = [n_targets for i in range(queries.shape[0])]
+            orig_target_sizes = torch.stack([t["orig_size"] for t in n_targets], dim=0)
+            target_sizes = torch.stack([t["size"] for t in n_targets], dim=0)
+            if reparam:
+                results = postprocessors["bbox"](outputs, target_sizes, orig_target_sizes)
+            else:
+                results = postprocessors["bbox"](outputs, orig_target_sizes)
+            if "segm" in postprocessors.keys():
+                target_sizes = torch.stack([t["size"] for t in n_targets], dim=0)
+                results = postprocessors["segm"](
+                    results, outputs, orig_target_sizes, target_sizes
+                )
+            
+            if bbox_evaluator is not None:
+                bbox_evaluator.process(n_targets, results)
+                results, maps = bbox_evaluator.evaluate()
+                bbox_evaluator.reset()
+            if cls in overall_results:
+                overall_results[cls].append(results['map50'])
+            else:
+                overall_results[cls] = [results['map50']]
+            
+        
+        
+
+    results_seen = {}
+    results_unseen = {}
+    for key, value in overall_results.items():
+        # Calculate the mean of the list
+        mean = sum(value) / len(value)
+        
+        # Update the list in the dictionary with the mean
+        if key in unseen_classes:
+            results_unseen[id_to_category_map[key]] = mean
+        else:
+            results_seen[id_to_category_map[key]] = mean
+    print("results on seen classes: ")
+    print("mean AP50 on seen classes: ",results_seen.values()/len(results_seen.values()) )
+    print(results_seen)
+    print("*************************")
+    print("results on unseen classes: ")
+    print("mean AP50 on seen classes: ",results_unseen.values()/len(results_unseen.values()) )
+    print(results_unseen)
+    #print(results)
+    return {**results} ##, coco_evaluator
+
+

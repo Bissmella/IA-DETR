@@ -2,7 +2,7 @@
 
 set -x
 
-SUB_EXEC="_8"
+SUB_EXEC="_1stage"
 FILE_NAME=$(basename $0)
 EXP_DIR=/home/bibahaduri/exps/${FILE_NAME%.*}${SUB_EXEC}
 PY_ARGS=${@:1}
@@ -10,10 +10,10 @@ PY_ARGS=${@:1}
 CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --output_dir ${EXP_DIR} \
     --with_box_refine \
-    --two_stage \
     --mixed_selection \
     --look_forward_twice \
     --upretrain \
+    --batch_size 16 \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \
@@ -31,7 +31,7 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --proposal_feature_levels 4 \
     --proposal_in_stride 16 \
     --pretrained_backbone_path /home/bibahaduri/pt_models/swinv2_small_1k_500k_mim_pt.pth \
-    --epochs 200 \
+    --epochs 40 \
     --lr_drop 11 \
     --warmup 1000 \
     --lr 2e-4 \
