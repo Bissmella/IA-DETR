@@ -11,12 +11,12 @@ IA-DETR is a state-of-the-art one-shot object detector based on DETR and indirec
 
 
 <div align=center>  
-<img src='.assets/IA-attn.png' width="80%">
+<img src='assets/IA-attn.png' width="80%">
 </div>
 
 
 <div align=center>  
-<img src='.assets/arc.png' width="95%">
+<img src='assets/arch.png' width="95%">
 </div>
 
 
