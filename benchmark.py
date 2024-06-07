@@ -15,7 +15,7 @@ import torch
 
 from main import get_args_parser as get_main_args_parser
 from models import build_model
-from datasets import build_dataset
+from data.build import get_detection_dataset_dicts
 from util.misc import nested_tensor_from_tensor_list
 
 
@@ -60,7 +60,7 @@ def benchmark():
     )
     assert args.batch_size > 0
     assert args.resume is None or os.path.exists(args.resume)
-    dataset = build_dataset("val", main_args)
+    dataset = get_detection_dataset_dicts('pascalvoc_test_Novel')
     model, _, _ = build_model(main_args)
     model.cuda()
     model.eval()

@@ -16,7 +16,7 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --batch_size 16 \
     --dataset_file coco \
     --coco_split 1 \
-    --resume ./expscoco/stage1_coco_1/checkpoint0029.pth \
+    --resume ./expscoco/stage1_coco_1/checkpoint0019.pth \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \

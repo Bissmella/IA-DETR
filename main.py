@@ -28,11 +28,8 @@ import math
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-import datasets
 import util.misc as utils
-import datasets.samplers as samplers
-from datasets import build_dataset, get_coco_api_from_dataset
-from data.build import build_evaluator, build_eval_dataloader, build_train_dataloader
+from datasets.build import build_evaluator, build_eval_dataloader, build_train_dataloader
 from engine import evaluate, evaluateall, train_one_epoch
 from models import build_model
 from torch import distributed as dist
@@ -254,7 +251,7 @@ def get_args_parser():
     parser.add_argument("--remove_difficult", action="store_true")
 
     parser.add_argument(
-        "--output_dir", default="/home/bibahaduri/exps/ex1", help="path where to save, empty for no saving"
+        "--output_dir", default="exps/ex1", help="path where to save, empty for no saving"
     )
     parser.add_argument(
         "--device", default="cuda", help="device to use for training / testing"
@@ -344,7 +341,7 @@ def main(args):
     else:
         if args.dataset_file =="pascalvoc":
             data_loader_train, mappers = build_train_dataloader(args, ["pascalvoc_train_2007_Base","pascalvoc_train_2012_Base",])
-            data_loader_val, mapper = build_eval_dataloader(args, ["pascalvoc_test_novel",])
+            data_loader_val, mapper = build_eval_dataloader(args, ["pascalvoc_test_Novel",])
         elif args.dataset_file == "coco":
             data_loader_train, mappers = build_train_dataloader(args, [f"coco_train_{args.coco_split}_Base",]) 
             data_loader_val, mapper = build_eval_dataloader(args, [f"coco_val_{args.coco_split}_novel",])
@@ -391,12 +388,6 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True, device_ids=[args.gpu])
         model_without_ddp = model.module
 
-    if args.dataset_file == "coco_panoptic":
-        # We also evaluate AP during panoptic training, on original coco DS
-        coco_val = datasets.coco.build("val", args)
-        base_ds = get_coco_api_from_dataset(coco_val)
-    else:
-        base_ds = None #get_coco_api_from_dataset(dataset_val)
 
     if args.frozen_weights is not None:
         checkpoint = torch.load(args.frozen_weights, map_location="cpu")
@@ -468,7 +459,6 @@ def main(args):
                 criterion,
                 postprocessors,
                 data_loader_val,
-                base_ds,
                 device,
                 args.output_dir,
                 step=args.start_epoch * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),
@@ -484,13 +474,12 @@ def main(args):
             criterion,
             postprocessors,
             data_loader_val,
-            base_ds,
             device,
             args.output_dir,
             step=args.start_epoch * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),
             use_wandb=args.use_wandb,
             reparam=args.reparam,
-            mapper= mapper,
+            mapper= mapper[0],
             dataset_file= args.dataset_file,
         )
 
@@ -561,7 +550,6 @@ def main(args):
                 criterion,
                 postprocessors,
                 data_loader_val,
-                base_ds,
                 device,
                 args.output_dir,
                 step=(epoch + 1) * math.ceil(len(data_loader_train.dataset.dataset) / args.batch_size),

@@ -23,13 +23,10 @@ import copy
 import wandb
 import torch
 import util.misc as utils
-from data.build import build_evaluator
-from datasets.coco_eval import CocoEvaluator
-from datasets.panoptic_eval import PanopticEvaluator
+from datasets.build import build_evaluator
 from datasets.data_prefetcher import data_prefetcher
 from torch import distributed as dist
-from data import PASCAL_VOC_BASE_CLASSES, PASCAL_VOC_NOVEL_CLASSES
-from datasets import build_dataset, get_coco_api_from_dataset
+from datasets import PASCAL_VOC_BASE_CLASSES, PASCAL_VOC_NOVEL_CLASSES
 import gc
 import logging
 from pycocotools.coco import COCO
@@ -231,7 +228,6 @@ def evaluate(
     criterion,
     postprocessors,
     data_loader,
-    base_ds,
     device,
     output_dir,
     step,
@@ -261,12 +257,7 @@ def evaluate(
     # coco_evaluator.coco_eval[iou_types[0]].params.iouThrs = [0, 0.1, 0.5, 0.75]
 
     panoptic_evaluator = None
-    if "panoptic" in postprocessors.keys():
-        panoptic_evaluator = PanopticEvaluator(
-            data_loader.dataset.ann_file,
-            data_loader.dataset.ann_folder,
-            output_dir=os.path.join(output_dir, "panoptic_eval"),
-        )
+    
     
     for samples, prmpts, targets in metric_logger.log_every(data_loader[0], 10, header):
         samples = samples.to(device)
@@ -340,7 +331,6 @@ def evaluateall(    model,
     criterion,
     postprocessors,
     data_loader,
-    base_ds,
     device,
     output_dir,
     step,
@@ -367,7 +357,9 @@ def evaluateall(    model,
         categories = coco.loadCats(coco.getCatIds())
         id_to_category_map = {category['id']: category['name'] for category in categories}
     elif dataset_file == 'pascalvoc':
-        id_to_category_map = {category[id]: category for id, category in enumerate(PASCAL_CLASSES)}  
+        id_to_category_map = {category[id]: category for id, category in enumerate(PASCAL_CLASSES)}
+    elif dataset_file == 'dota':
+        id_to_category_map = {i : i for i in range(18)}  
     else:
         assert False, "Not implemented!"
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -381,12 +373,7 @@ def evaluateall(    model,
     bbox_evaluator = build_evaluator(None, "coco_train_1_Base", device, output_dir)
 
     panoptic_evaluator = None
-    if "panoptic" in postprocessors.keys():
-        panoptic_evaluator = PanopticEvaluator(
-            data_loader.dataset.ann_file,
-            data_loader.dataset.ann_folder,
-            output_dir=os.path.join(output_dir, "panoptic_eval"),
-        )
+    
     overall_results = {}
     for samples, prmpts, targets in metric_logger.log_every(data_loader[0], 10, header):
         samples = samples.to(device)
@@ -455,11 +442,11 @@ def evaluateall(    model,
         else:
             results_seen[id_to_category_map[key]] = mean
     print("results on seen classes: ")
-    print("mean AP50 on seen classes: ",results_seen.values()/len(results_seen.values()) )
+    print("mean AP50 on seen classes: ",sum(results_seen.values())/len(results_seen.values()) )
     print(results_seen)
     print("*************************")
     print("results on unseen classes: ")
-    print("mean AP50 on seen classes: ",results_unseen.values()/len(results_unseen.values()) )
+    print("mean AP50 on seen classes: ",sum(results_unseen.values())/len(results_unseen.values()) )
     print(results_unseen)
     #print(results)
     return {**results} ##, coco_evaluator

@@ -2,7 +2,7 @@
 
 set -x
 
-SUB_EXEC="_cr15"
+SUB_EXEC="_cr15_2"
 FILE_NAME=$(basename $0)
 EXP_DIR=/home/bibahaduri/expsdota/${FILE_NAME%.*}${SUB_EXEC}
 PY_ARGS=${@:1}
@@ -13,9 +13,9 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --two_stage \
     --mixed_selection \
     --look_forward_twice \
-    --batch_size 16 \
+    --batch_size 24 \
     --dataset_file dota \
-    --resume /home/bibahaduri/expsdota/exec_pretrain_dota_9/checkpoint.pth\
+    --resume /home/bibahaduri/expsdota/exec_pretrain_dota_9/checkpoint.pth \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
     --k_one2many 6 \
@@ -33,7 +33,7 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --proposal_in_stride 16 \
     --pretrained_backbone_path /home/bibahaduri/pt_models/swinv2_small_1k_500k_mim_pt.pth \
     --epochs 14 \
-    --lr_drop 11 \
+    --lr_drop 10 \
     --warmup 1000 \
     --lr 2e-4 \
     --use_layerwise_decay \

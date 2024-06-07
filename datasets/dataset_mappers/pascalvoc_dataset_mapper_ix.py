@@ -58,7 +58,7 @@ def make_self_det_transforms(training):
     ])
 
     # The image of ImageNet is relatively small.
-    scales = [400, 480, 512, 544, 576, 608, 640]##[320, 336, 352, 368, 400, 416, 432, 448, 464, 480]
+    scales = [400, 480, 512, 544]#, 576, 608, 640]##[320, 336, 352, 368, 400, 416, 432, 448, 464, 480]
 
     if training == True:
         # return T.Compose([
@@ -69,12 +69,12 @@ def make_self_det_transforms(training):
         return T.Compose([
                 T.RandomHorizontalFlip(),
                 T.RandomSelect(
-                    T.RandomResize(scales, max_size=642),
+                    T.RandomResize(scales, max_size=512),  #642
                     T.Compose(
                         [
-                            T.RandomResize([400, 500, 600]),
-                            T.RandomSizeCrop(384, 600),
-                            T.RandomResize(scales, max_size=642),
+                            T.RandomResize([400, 480, 512]), #500, 600
+                            T.RandomSizeCrop(384, 512), #384, 600
+                            T.RandomResize(scales, max_size=512), #642
                         ]
                     ),
                 ),
@@ -83,7 +83,7 @@ def make_self_det_transforms(training):
 
     if training == False:
         return T.Compose([
-            T.RandomResize([480], max_size=642), ##512
+            T.RandomResize([512], max_size=512), #480    642
             normalize,
         ])
 
@@ -92,7 +92,7 @@ def get_query_transforms(training):
     if training == True:
         # SimCLR style augmentation
         return transforms.Compose([
-            transforms.Resize((512, 512)),
+            transforms.Resize((300, 300)),  ##512, 512
             transforms.RandomApply([
                 transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
             ], p=0.3),
@@ -107,7 +107,7 @@ def get_query_transforms(training):
         ])
     if training == False:
         return transforms.Compose([
-            transforms.Resize((512, 512)),
+            transforms.Resize((300, 300)), #512, 512
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -230,9 +230,9 @@ class PascalVOCSegDatasetMapperIX:
                 file_path = 'data/coco/coco_crop_test/image_details.csv'
         elif "dota" in self.dataset_name:
             if self.is_train:
-                file_path = '/home/bibahaduri/dota_dataset/coco/train_support_df.csv'
+                file_path = '/home/bibahaduri/dota_dataset/coco/coco_crop/image_details.csv'
             else:
-                file_path = '/home/bibahaduri/dota_dataset/coco/testall_support_df.csv'
+                file_path = '/home/bibahaduri/dota_dataset/coco/coco_crop_test/image_details.csv'
         self.prmpt_df = pd.read_csv(file_path)
         self.epoch = 0
         self.query_position = 0
@@ -494,10 +494,10 @@ class PascalVOCSegDatasetMapperIX:
 
         if "pascalvoc" in self.dataset_name:
             for i, cls in enumerate(PASCAL_CLASSES):
-                if cls in self.base_classes:
-                    show_time[i] = len(self.prmpt_df[self.prmpt_df['Class Name'] == cls])
-                else:
-                    show_time[i] =0
+                # if cls in self.base_classes:
+                show_time[i] = len(self.prmpt_df[self.prmpt_df['Class Name'] == cls])
+                # else:
+                #     show_time[i] =0
         else: ##if "coco" in self.dataset_name:
             for i in self.base_ind:
                 show_time[i] = len(self.prmpt_df[self.prmpt_df['Class Name'] == i])

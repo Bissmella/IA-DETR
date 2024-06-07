@@ -32,7 +32,7 @@ CUDA_LAUNCH_BLOCKING=1 python -u main.py \
     --proposal_feature_levels 4 \
     --proposal_in_stride 16 \
     --pretrained_backbone_path ./pt_models/swinv2_small_1k_500k_mim_pt.pth \
-    --epochs 30 \
+    --epochs 20 \
     --lr_drop 11 \
     --warmup 1000 \
     --lr 2e-4 \

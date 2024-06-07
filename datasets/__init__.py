@@ -1,33 +1,11 @@
-# ------------------------------------------------------------------------
-# Deformable DETR
-# Copyright (c) 2020 SenseTime. All Rights Reserved.
-# Licensed under the Apache License, Version 2.0 [see LICENSE for details]
-# ------------------------------------------------------------------------
-# Modified from DETR (https://github.com/facebookresearch/detr)
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-# ------------------------------------------------------------------------
+from . import registration
 
-import torch.utils.data
-from .torchvision_datasets import CocoDetection
+PASCAL_CLASSES = ["aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat",
+            "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person",
+            "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 
-from .coco import build as build_coco
+PASCAL_VOC_BASE_CLASSES = ["bicycle", "bird", "boat", "bottle", "bus", "car", "chair", "diningtable",
+        "dog", "horse", "motorbike", "person", "pottedplant", "sofa", "train", "tvmonitor",
+]
 
-
-def get_coco_api_from_dataset(dataset):
-    for _ in range(10):
-        # if isinstance(dataset, torchvision.datasets.CocoDetection):
-        #     break
-        if isinstance(dataset, torch.utils.data.Subset):
-            dataset = dataset.dataset
-    if isinstance(dataset, CocoDetection):
-        return dataset.coco
-
-
-def build_dataset(image_set, args):
-    if args.dataset_file == "coco":
-        return build_coco(image_set, args)
-    if args.dataset_file == "coco_panoptic":
-        # to avoid making panopticapi required for coco
-        from .coco_panoptic import build as build_coco_panoptic
-        return build_coco_panoptic(image_set, args)
-    raise ValueError(f"dataset {args.dataset_file} not supported")
+PASCAL_VOC_NOVEL_CLASSES = ["aeroplane", "cat",  "cow", "sheep", ]

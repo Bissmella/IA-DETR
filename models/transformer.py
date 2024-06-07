@@ -24,7 +24,7 @@ from util.box_ops import delta2bbox, box_xyxy_to_cxcywh
 from models.utils import LayerNorm2D
 
 from models.global_ape_decoder import build_global_ape_decoder
-from plain_detr.models.global_rpe_indirect_decoder import build_global_rpe_indirect_decoder
+from models.global_rpe_indirect_decoder import build_global_rpe_indirect_decoder
 
 from models.encoder import build_global_encoder
 

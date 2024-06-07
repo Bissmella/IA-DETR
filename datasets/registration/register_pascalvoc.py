@@ -713,6 +713,7 @@ def register_all_dota(root):
         ("dota_train", "train2017", "Base", "instances_train2017"),
         #("pascalvoc_val", "PascalVOC", "Novel", "val"),
         ("dota_val", "test2017", "Novel", "instances_test2017"), ##**
+        ("dota_val", "test2017", "all", "instances_test2017"), 
         # ("coco_val", "val2017", 1, "Base", "instances_val2017"),
         # ("coco_train", "train2017", 2, "Base", "instances_train2017"),
         # ("coco_val", "val2017", 2, "Novel", "instances_val2017"),

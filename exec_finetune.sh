@@ -2,7 +2,7 @@
 
 set -x
 
-SUB_EXEC="_cr_freeze2"
+SUB_EXEC="_cr_sftmxoq"
 FILE_NAME=$(basename $0)
 EXP_DIR=/home/bibahaduri/exps/${FILE_NAME%.*}${SUB_EXEC}
 PY_ARGS=${@:1}
@@ -13,9 +13,7 @@ python -u main.py \
     --two_stage \
     --mixed_selection \
     --look_forward_twice \
-    --batch_size 1 \
-    --eval \
-    --resume /home/bibahaduri/exps/exec_finetune_cr_nofreeze/checkpoint0012.pth\
+    --batch_size 16 \
     --dataset_file pascalvoc \
     --num_queries_one2one 300 \
     --num_queries_one2many 1500 \
