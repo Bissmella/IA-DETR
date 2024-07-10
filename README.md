@@ -108,15 +108,3 @@ To evalute a plain-detr model, please run the following script:
 ```
  <path to config file> --eval --resume <path to plain-detr model>
 ```
-
-
-## Citing IA-DETR
-
-If you find IA-DETR useful in your research, please consider citing:
-```
-inproceedings{lin2023detr,
-  title={Indirect attention: IA-DETR for one shot object detection},
-  author={Anonymous..},
-  year={2024}
-}
-```
